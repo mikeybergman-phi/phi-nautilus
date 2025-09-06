@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Nautilus — φ Modes + True Per-Turn Rise + Export/Record (Collapsible UI)</title>
+<style>
+  :root{--uiw:clamp(260px,28vw,520px)}
+  html,body{height:100%;margin:0;background:#0b0f14;color:#cfd5dd;font:13px ui-sans-serif,system-ui,-apple-system}
+  #app{position:fixed;inset:0}
+  /* Control panel */
+  .ui{
+    position:fixed;top:12px;left:12px;display:grid;gap:10px;width:var(--uiw);
+    background:rgba(10,13,18,.92);border:1px solid #1e2733;border-radius:12px;padding:12px;
+    z-index:1000; transition:transform .28s ease, opacity .2s ease;
+  }
+  .ui.collapsed{ transform:translateX(calc(-100% - 20px)); opacity:.96 }
+  .ui .header{display:flex;align-items:center;gap:8px;justify-content:space-between;margin-bottom:4px}
+  .ui .title{font-weight:600;color:#e7edf7}
+  .collapse-btn{
+    background:#0f1620;color:#cfe3ff;border:1px solid #2b3a4a;border-radius:8px;padding:6px 10px;cursor:pointer
+  }
+  .collapse-btn:hover{background:#132033}
+  /* Reopen tab shown when collapsed */
+  #reopenTab{
+    position:fixed;top:12px;left:12px;display:none;place-items:center;cursor:pointer;
+    width:56px;height:32px;border-radius:999px;background:#0f1620;color:#cfe3ff;
+    border:1px solid #1e2733;box-shadow:0 2px 8px rgba(0,0,0,.35);z-index:1002
+  }
+
+  .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .row label{flex:1;color:#9fb1c7}
+  .row input[type="range"]{flex:2}
+  .row input[type="number"], .row select{
+    width:120px;background:#0a0d12;color:#e7eaee;border:1px solid #2b3a4a;border-radius:8px;padding:6px
+  }
+  .badge{font-size:12px;opacity:.9;padding:2px 6px;border:1px solid #2b3a4a;border-radius:8px;white-space:nowrap}
+  .row button{background:#122033;color:#e7eaee;border:1px solid #2b3a4a;border-radius:8px;padding:6px 10px;cursor:pointer}
+  .row button:hover{background:#17283c}
+  .btns{display:flex;gap:8px;flex-wrap:wrap}
+  .hint{opacity:.8}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<!-- Reopen tab (visible only when panel collapsed) -->
+<button id="reopenTab" title="Show menu" aria-label="Show menu">Menu</button>
+
+<div class="ui" id="panel">
+  <div class="header">
+    <div class="title">Nautilus Controls</div>
+    <button id="collapseBtn" class="collapse-btn" title="Hide menu" aria-label="Hide menu">Hide (M)</button>
+  </div>
+
+  <div class="row">
+    <label>φ scaling mode</label>
+    <select id="phiMode">
+      <option value="phi_full">φ per full turn</option>
+      <option value="phi_half">φ per 1/2 turn</option>
+      <option value="phi_quarter">φ per 1/4 turn</option>
+      <option value="custom">Custom W (per full turn)</option>
+    </select>
+    <span id="wBadge" class="badge">W ≈ φ</span>
+  </div>
+
+  <div class="row" id="customRow" style="display:none">
+    <label>Custom W (per full turn)</label>
+    <input id="W" type="range" min="1.05" max="8.0" step="0.00001" value="1.6180339887">
+    <input id="W_val" type="number" step="0.00001" value="1.61803">
+  </div>
+
+  <div class="row">
+    <label>Turns</label>
+    <input id="turns" type="range" min="0.5" max="12" step="0.1" value="4.5">
+    <input id="turns_val" type="number" step="0.1" value="4.5">
+  </div>
+
+  <!-- D0/A0 fixed internally to D0=1, A0=φ^-3 -->
+
+  <div class="row">
+    <label>Rise per turn (units)</label>
+    <input id="rise" type="range" min="-12" max="12" step="0.00001" value="0" list="phiTicks">
+    <input id="rise_val" type="number" step="0.00001" min="-12" max="12" value="0.00000">
+  </div>
+  <datalist id="phiTicks">
+    <option value="-11.09017" label="-φ^5"></option>
+    <option value="-6.85410"  label="-φ^4"></option>
+    <option value="-4.23607"  label="-φ^3"></option>
+    <option value="-2.61803"  label="-φ^2"></option>
+    <option value="-1.61803"  label="-φ^1"></option>
+    <option value="-1.00000"  label="-φ^0"></option>
+    <option value="-0.61803"  label="-φ^-1"></option>
+    <option value="-0.38197"  label="-φ^-2"></option>
+    <option value="-0.23607"  label="-φ^-3"></option>
+    <option value="-0.14590"  label="-φ^-4"></option>
+    <option value="-0.09017"  label="-φ^-5"></option>
+    <option value="0.00000"   label="0"></option>
+    <option value="0.09017"   label="φ^-5"></option>
+    <option value="0.14590"   label="φ^-4"></option>
+    <option value="0.23607"   label="φ^-3"></option>
+    <option value="0.38197"   label="φ^-2"></option>
+    <option value="0.61803"   label="φ^-1"></option>
+    <option value="1.00000"   label="φ^0"></option>
+    <option value="1.61803"   label="φ^1"></option>
+    <option value="2.61803"   label="φ^2"></option>
+    <option value="4.23607"   label="φ^3"></option>
+    <option value="6.85410"   label="φ^4"></option>
+    <option value="11.09017"  label="φ^5"></option>
+  </datalist>
+
+  <div class="row">
+    <label></label>
+    <span id="tBadge" class="badge">Δz (first turn) = 0.00000</span>
+  </div>
+
+  <div class="row">
+    <label>Rainbow (per turn)</label><input id="rainbow" type="checkbox" checked>
+    <label>Wireframe</label><input id="wire" type="checkbox">
+    <label>Translucent</label><input id="trans" type="checkbox" checked>
+  </div>
+  <div class="row">
+    <label>Opacity</label>
+    <input id="opacity" type="range" min="0.08" max="1.0" step="0.01" value="0.35">
+    <input id="opacity_val" type="number" step="0.01" value="0.35">
+  </div>
+
+  <div class="row btns">
+    <button id="viewXY">View XY</button>
+    <button id="viewISO">ISO</button>
+    <button id="resetCam">Reset</button>
+  </div>
+
+  <!-- Exporters & Snapshots -->
+  <div class="row btns">
+    <button id="exportGLB">Export GLB</button>
+    <button id="exportOBJ">Export OBJ</button>
+    <button id="exportSTL">Export STL</button>
+    <button id="snapPNG">Snapshot PNG</button>
+    <button id="snapSVG">Snapshot SVG</button>
+  </div>
+
+  <!-- Recorder -->
+  <div class="row">
+    <label>Record growth</label>
+    <select id="recParam">
+      <option value="turns">Turns</option>
+      <option value="rise">Rise</option>
+      <option value="both">Turns + Rise</option>
+    </select>
+    <input id="recDur" type="number" step="0.1" min="0.5" value="6.0"> 
+    <span class="badge">sec</span>
+    <input id="recFPS" type="number" step="1" min="12" max="60" value="30">
+    <span class="badge">fps</span>
+    <button id="recBtn">Record</button>
+  </div>
+  <div class="row hint">Press <b>M</b> to toggle the menu. The state is remembered.</div>
+</div>
+
+<!-- Import map -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/examples/jsm/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { ParametricGeometry } from 'three/examples/jsm/geometries/ParametricGeometry.js';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js';
+import { STLExporter } from 'three/examples/jsm/exporters/STLExporter.js';
+import { SVGRenderer } from 'three/examples/jsm/renderers/SVGRenderer.js';
+
+const PHI = (1 + Math.sqrt(5)) / 2;
+
+// ---- Fixed geometry (overlap-safe for W=φ) ----
+const D0 = 1.0;
+const A0 = Math.pow(PHI, -3);   // ≈ 0.2360679775
+
+// ---- Fixed tessellation ----
+const U_SEG = 320;
+const V_SEG = 64;
+
+// Scene
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({antialias:true, preserveDrawingBuffer:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x0b0f14, 1);
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.01, 100000);
+const defaultCam = new THREE.Vector3(4.8, 2.8, 5.2);
+camera.position.copy(defaultCam); camera.lookAt(0,0,0);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+const key = new THREE.DirectionalLight(0xffffff, 0.9); key.position.set(6,8,5); scene.add(key);
+const rim = new THREE.DirectionalLight(0x8fb8ff, 0.35); rim.position.set(-6,-3,8); scene.add(rim);
+
+const grid = new THREE.GridHelper(40, 40, 0x213040, 0x152233); grid.position.y = -0.001; scene.add(grid);
+
+const root = new THREE.Group(); scene.add(root);
+
+// Materials
+let mat = new THREE.MeshStandardMaterial({
+  color: 0xffffff, metalness: 0.0, roughness: 0.45,
+  vertexColors: true, transparent: true, opacity: 0.35, side: THREE.DoubleSide
+});
+const matWire = new THREE.MeshBasicMaterial({color:0xffffff, wireframe:true, transparent:true, opacity:0.15});
+
+let meshObj=null, wireObj=null;
+
+// UI helpers
+const $ = id => document.getElementById(id);
+const bind = (rangeId, numId, cb) => {
+  const r = $(rangeId), n = $(numId);
+  const sync = v => { r.value = v; n.value = v; cb(); };
+  r.addEventListener('input', () => sync(r.value));
+  n.addEventListener('input', () => sync(n.value));
+};
+function setPair(id, value){ $(id).value = value; const n=$(`${id}_val`); if(n) n.value = value; }
+
+// --- Collapsible menu logic ---
+const panel = $('panel');
+const reopen = $('reopenTab');
+const collapseBtn = $('collapseBtn');
+
+function setCollapsed(collapsed){
+  panel.classList.toggle('collapsed', collapsed);
+  reopen.style.display = collapsed ? 'grid' : 'none';
+  localStorage.setItem('nautilus.ui.collapsed', collapsed ? '1' : '0');
+}
+collapseBtn.addEventListener('click', ()=> setCollapsed(true));
+reopen.addEventListener('click', ()=> setCollapsed(false));
+window.addEventListener('keydown', (e)=>{ if(e.key.toLowerCase()==='m') setCollapsed(!panel.classList.contains('collapsed')); });
+// restore state
+setCollapsed(localStorage.getItem('nautilus.ui.collapsed')==='1');
+
+// Per-turn growth W from φ mode
+function effectiveW(){
+  const mode = $('phiMode').value;
+  if (mode === 'phi_full')    return PHI;
+  if (mode === 'phi_half')    return PHI*PHI;
+  if (mode === 'phi_quarter') return Math.pow(PHI,4);
+  return parseFloat($('W').value);
+}
+function updateWBadge(){
+  const W = effectiveW();
+  $('wBadge').textContent = `W ≈ ${W.toFixed(5)} · W/φ ≈ ${(W/PHI).toFixed(5)}`;
+  const customRow = document.getElementById('customRow');
+  customRow.style.display = ($('phiMode').value === 'custom') ? 'flex' : 'none';
+}
+
+// Parametric shell (true per-turn rise)
+function nautilusXYZ(u01, v01, target, params){
+  const { turns, W, M } = params; // M = Δz of the first full turn
+
+  const u0 = 1e-5;
+  const u1 = turns * Math.PI * 2;
+  const u = u0 + (u1 - u0) * u01;
+  const v = v01 * Math.PI * 2;
+
+  const k = Math.log(W) / (2*Math.PI);   // per-radian growth so 2π → W
+  const s = Math.exp(k * u);             // global scale at angle u
+
+  const R = D0 * s;
+  const a = A0 * s;
+
+  // T(u) = M * (s(u) - 1) / (W - 1)  (fallback if W≈1)
+  const T = (Math.abs(W - 1) < 1e-9) ? (M / (2*Math.PI)) * u : M * (s - 1) / (W - 1);
+
+  const rv = R + a * Math.cos(v);
+  target.set(
+    rv * Math.cos(u),
+    rv * Math.sin(u),
+    T + a * Math.sin(v)
+  );
+}
+
+// Rainbow color per turn
+function buildColorsPerTurn(geom, turns){
+  const colors = new Float32Array((U_SEG+1)*(V_SEG+1)*3);
+  const color = new THREE.Color();
+  const cols = V_SEG+1;
+  for (let iu=0; iu<=U_SEG; iu++){
+    const h = ((iu/U_SEG)*turns) % 1; // hue cycles each revolution
+    color.setHSL(h, 1.0, 0.5);
+    for (let iv=0; iv<=V_SEG; iv++){
+      const idx = (iu*cols + iv)*3;
+      colors[idx]   = color.r;
+      colors[idx+1] = color.g;
+      colors[idx+2] = color.b;
+    }
+  }
+  geom.setAttribute('color', new THREE.BufferAttribute(colors,3));
+}
+
+// Camera fit
+function autoFitCameraToRadius(R){
+  const far = Math.min(1e6, Math.max(500, R*6));
+  camera.far = far;
+  camera.near = Math.max(0.01, far/10000);
+  camera.updateProjectionMatrix();
+  const targetDist = Math.max(6.0, R*2.2);
+  const dir = camera.position.clone().normalize();
+  if (!isFinite(dir.length()) || dir.length()===0) camera.position.set(4.8,2.8,5.2);
+  camera.position.copy(camera.position.clone().normalize().multiplyScalar(targetDist));
+  controls.target.set(0,0,0);
+  controls.update();
+}
+
+function buildShell(){
+  const W      = effectiveW();
+  const turns  = parseFloat($('turns').value);
+  const M      = parseFloat($('rise').value); // Δz of the first full turn (5 decimals)
+  $('rise_val').value = Number.isFinite(M) ? M.toFixed(5) : '0.00000';
+  $('tBadge').textContent = `Δz (first turn) = ${M.toFixed(5)}`;
+
+  const rainbow= $('rainbow').checked;
+  const showWire = $('wire').checked;
+  const translucent = $('trans').checked;
+  const opacity = parseFloat($('opacity').value);
+
+  if (meshObj){ root.remove(meshObj); meshObj.geometry.dispose(); meshObj=null; }
+  if (wireObj){ root.remove(wireObj); wireObj.geometry.dispose(); wireObj=null; }
+
+  const params = { turns, W, M };
+  const geom = new ParametricGeometry((u,v,t)=>nautilusXYZ(u,v,t,params), U_SEG, V_SEG);
+  geom.computeVertexNormals();
+
+  if (rainbow) buildColorsPerTurn(geom, turns);
+  else {
+    const n = geom.attributes.position.count;
+    const colors = new Float32Array(n*3);
+    for (let i=0;i<colors.length;i+=3){ colors[i]=1; colors[i+1]=1; colors[i+2]=1; }
+    geom.setAttribute('color', new THREE.BufferAttribute(colors,3));
+  }
+
+  meshObj = new THREE.Mesh(geom, mat);
+  mat.transparent = translucent;
+  mat.opacity = opacity;
+  root.add(meshObj);
+
+  wireObj = new THREE.Mesh(geom.clone(), matWire);
+  wireObj.visible = showWire;
+  root.add(wireObj);
+
+  geom.computeBoundingSphere();
+  const R = geom.boundingSphere ? Math.max(geom.boundingSphere.radius, 1.0) : 5.0;
+  autoFitCameraToRadius(R);
+
+  updateWBadge();
+  controls.update();
+}
+
+// ---------- Export & Snapshot helpers ----------
+function fileStamp(){ const d=new Date(); const s=d.toISOString().replace(/[:.]/g,'-'); return s.slice(0,19); }
+function saveBlob(data, filename, mime){
+  const blob = (data instanceof Blob) ? data : new Blob([data], {type: mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 800);
+}
+function currentName(prefix){
+  const mode = $('phiMode').value.replace('phi_','');
+  return `${prefix}_mode-${mode}_turns-${$('turns').value}_rise-${parseFloat($('rise').value).toFixed(2)}_${fileStamp()}`;
+}
+
+function exportGLB(){
+  if(!meshObj) return;
+  const exporter = new GLTFExporter();
+  exporter.parse(meshObj, (glb)=>{
+    saveBlob(glb, currentName('nautilus')+'.glb', 'model/gltf-binary');
+  }, (err)=>console.error(err), {binary:true});
+}
+function exportOBJ(){
+  if(!meshObj) return;
+  const exporter = new OBJExporter();
+  const obj = exporter.parse(meshObj);
+  saveBlob(obj, currentName('nautilus')+'.obj', 'text/plain');
+}
+function exportSTL(){
+  if(!meshObj) return;
+  const exporter = new STLExporter();
+  const stl = exporter.parse(meshObj, {binary:true});
+  saveBlob(stl, currentName('nautilus')+'.stl', 'model/stl');
+}
+function snapshotPNG(){
+  renderer.render(scene, camera);
+  renderer.domElement.toBlob((blob)=>{
+    if(blob) saveBlob(blob, currentName('nautilus')+'.png', 'image/png');
+  }, 'image/png');
+}
+function snapshotSVG(){
+  if(!meshObj) return;
+  const original = meshObj.material;
+  meshObj.material = new THREE.MeshBasicMaterial({ vertexColors:true, side:THREE.DoubleSide });
+  const svgRenderer = new SVGRenderer({ antialias:true });
+  svgRenderer.setSize(renderer.domElement.width, renderer.domElement.height);
+  svgRenderer.render(scene, camera);
+  meshObj.material = original;
+
+  const svg = svgRenderer.domElement;
+  const serializer = new XMLSerializer();
+  const svgStr = serializer.serializeToString(svg);
+  saveBlob(svgStr, currentName('nautilus')+'.svg', 'image/svg+xml');
+}
+
+// ---------- Recorder ----------
+let isRecording = false, mediaRecorder=null, recChunks=[];
+function easeInOutCubic(t){ return t<0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
+
+function recordGrowth(){
+  if(isRecording){
+    if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    isRecording = false; $('recBtn').textContent = 'Record'; return;
+  }
+  const fps = Math.max(12, Math.min(60, parseInt($('recFPS').value,10)||30));
+  const dur = Math.max(0.5, parseFloat($('recDur').value)||6.0);
+  const mode = $('recParam').value;
+
+  const endTurns = parseFloat($('turns').value);
+  const endRise  = parseFloat($('rise').value);
+  const startTurns = 0.25;
+  const startRise  = 0.0;
+
+  const stream = renderer.domElement.captureStream(fps);
+  recChunks = [];
+  mediaRecorder = new MediaRecorder(stream, { mimeType:'video/webm' });
+  mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) recChunks.push(e.data); };
+  mediaRecorder.onstop = ()=>{
+    const blob = new Blob(recChunks, { type:'video/webm' });
+    saveBlob(blob, currentName('nautilus_growth')+'.webm', 'video/webm');
+    setPair('turns', endTurns.toString());
+    setPair('rise', endRise.toFixed(5));
+    buildShell();
+    isRecording = false; $('recBtn').textContent = 'Record';
+  };
+
+  if(mode === 'turns' || mode === 'both'){ setPair('turns', startTurns.toString()); }
+  if(mode === 'rise'  || mode === 'both'){ setPair('rise',  startRise.toFixed(5)); }
+  buildShell();
+
+  isRecording = true; $('recBtn').textContent = 'Stop';
+  let t0 = performance.now();
+  mediaRecorder.start();
+
+  function step(){
+    if(!isRecording) return;
+    const t = (performance.now() - t0) / (dur*1000);
+    const u = Math.min(1, Math.max(0, easeInOutCubic(t)));
+    if(mode === 'turns' || mode === 'both'){
+      const v = startTurns + (endTurns - startTurns)*u;
+      setPair('turns', v.toFixed(2));
+    }
+    if(mode === 'rise' || mode === 'both'){
+      const v = startRise + (endRise - startRise)*u;
+      setPair('rise', v.toFixed(5));
+    }
+    buildShell();
+    if(t >= 1){ mediaRecorder.stop(); return; }
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+// ---------- Bindings ----------
+['phiMode'].forEach(id => $(id).addEventListener('change', ()=>{updateWBadge(); buildShell();}));
+['W','turns','opacity','rise'].forEach(id => bind(id, id+'_val', buildShell));
+['wire','trans','rainbow'].forEach(id => $(id).addEventListener('change', buildShell));
+$('recBtn').onclick   = recordGrowth;
+
+$('viewXY').onclick = () => { camera.position.set(0,0,6.5); camera.lookAt(0,0,0); controls.update(); };
+$('viewISO').onclick = () => { camera.position.set(6,4,6); camera.lookAt(0,0,0); controls.update(); };
+$('resetCam').onclick = () => { camera.position.copy(defaultCam); camera.lookAt(0,0,0); controls.update(); };
+
+$('exportGLB').onclick = exportGLB;
+$('exportOBJ').onclick = exportOBJ;
+$('exportSTL').onclick = exportSTL;
+$('snapPNG').onclick  = snapshotPNG;
+$('snapSVG').onclick  = snapshotSVG;
+
+updateWBadge();
+buildShell();
+
+// Resize + animate
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+(function loop(){
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
